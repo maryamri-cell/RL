@@ -462,10 +462,5 @@ Ce projet permet de comprendre:
 
 ---
 
-## 👨‍🎓 Auteur
-
-Projet développé à des fins éducatives pour l'étude approfondie des algorithmes d'apprentissage par renforcement.
-
----
 
 **Dernière mise à jour**: Octobre 2025
