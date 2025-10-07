@@ -6,9 +6,8 @@ import gymnasium as gym
 from gymnasium import spaces 
 import pickle 
 import time
-import os
+from collections import defaultdict
 
-# --- PARTIE I: ENVIRONNEMENT (GridWorld) ---
 
 class StochasticGymnasiumGridWorld(gym.Env): 
     
@@ -143,10 +142,149 @@ class StochasticGymnasiumGridWorld(gym.Env):
              plt.close(self.fig)
 
 
-# --- PARTIE II: AGENT (SARSA Linéaire) ---
-
-class LinearSARSAAgent:
+# 1. Q-LEARNING (Tabulaire)
+class QLearningAgent:
+    def __init__(self, env, alpha=0.1, gamma=0.99, epsilon=1.0):
+        self.env = env
+        self.alpha = alpha
+        self.gamma = gamma
+        self.epsilon = epsilon
+        self.q_table = defaultdict(lambda: np.zeros(env.action_space.n))
+        
+    def get_action(self, state):
+        if random.random() < self.epsilon:
+            return self.env.action_space.sample()
+        else:
+            return np.argmax(self.q_table[state])
     
+    def learn(self, state, action, reward, next_state, done):
+        if done:
+            td_target = reward
+        else:
+            td_target = reward + self.gamma * np.max(self.q_table[next_state])
+        
+        td_error = td_target - self.q_table[state][action]
+        self.q_table[state][action] += self.alpha * td_error
+    
+    def decay_epsilon(self, decay_rate=0.995):
+        self.epsilon = max(0.05, self.epsilon * decay_rate)
+
+
+# 2. SARSA (Tabulaire)
+class SARSAAgent:
+    def __init__(self, env, alpha=0.1, gamma=0.99, epsilon=1.0):
+        self.env = env
+        self.alpha = alpha
+        self.gamma = gamma
+        self.epsilon = epsilon
+        self.q_table = defaultdict(lambda: np.zeros(env.action_space.n))
+        
+    def get_action(self, state):
+        if random.random() < self.epsilon:
+            return self.env.action_space.sample()
+        else:
+            return np.argmax(self.q_table[state])
+    
+    def learn(self, state, action, reward, next_state, next_action, done):
+        if done:
+            td_target = reward
+        else:
+            td_target = reward + self.gamma * self.q_table[next_state][next_action]
+        
+        td_error = td_target - self.q_table[state][action]
+        self.q_table[state][action] += self.alpha * td_error
+    
+    def decay_epsilon(self, decay_rate=0.995):
+        self.epsilon = max(0.05, self.epsilon * decay_rate)
+
+
+# 3. Expected SARSA (Tabulaire)
+class ExpectedSARSAAgent:
+    def __init__(self, env, alpha=0.1, gamma=0.99, epsilon=1.0):
+        self.env = env
+        self.alpha = alpha
+        self.gamma = gamma
+        self.epsilon = epsilon
+        self.q_table = defaultdict(lambda: np.zeros(env.action_space.n))
+        
+    def get_action(self, state):
+        if random.random() < self.epsilon:
+            return self.env.action_space.sample()
+        else:
+            return np.argmax(self.q_table[state])
+    
+    def learn(self, state, action, reward, next_state, done):
+        if done:
+            td_target = reward
+        else:
+            # Espérance sur toutes les actions possibles
+            q_values = self.q_table[next_state]
+            best_action = np.argmax(q_values)
+            
+            expected_q = 0
+            for a in range(self.env.action_space.n):
+                if a == best_action:
+                    prob = 1 - self.epsilon + self.epsilon / self.env.action_space.n
+                else:
+                    prob = self.epsilon / self.env.action_space.n
+                expected_q += prob * q_values[a]
+            
+            td_target = reward + self.gamma * expected_q
+        
+        td_error = td_target - self.q_table[state][action]
+        self.q_table[state][action] += self.alpha * td_error
+    
+    def decay_epsilon(self, decay_rate=0.995):
+        self.epsilon = max(0.05, self.epsilon * decay_rate)
+
+
+# 4. Double Q-Learning (Tabulaire)
+class DoubleQLearningAgent:
+    def __init__(self, env, alpha=0.1, gamma=0.99, epsilon=1.0):
+        self.env = env
+        self.alpha = alpha
+        self.gamma = gamma
+        self.epsilon = epsilon
+        self.q_table_a = defaultdict(lambda: np.zeros(env.action_space.n))
+        self.q_table_b = defaultdict(lambda: np.zeros(env.action_space.n))
+        
+    def get_action(self, state):
+        if random.random() < self.epsilon:
+            return self.env.action_space.sample()
+        else:
+            # Moyenne des deux tables Q
+            q_avg = (self.q_table_a[state] + self.q_table_b[state]) / 2
+            return np.argmax(q_avg)
+    
+    def learn(self, state, action, reward, next_state, done):
+        if done:
+            td_target = reward
+        else:
+            # Mise à jour aléatoire d'une des deux tables
+            if random.random() < 0.5:
+                best_action = np.argmax(self.q_table_a[next_state])
+                td_target = reward + self.gamma * self.q_table_b[next_state][best_action]
+                td_error = td_target - self.q_table_a[state][action]
+                self.q_table_a[state][action] += self.alpha * td_error
+            else:
+                best_action = np.argmax(self.q_table_b[next_state])
+                td_target = reward + self.gamma * self.q_table_a[next_state][best_action]
+                td_error = td_target - self.q_table_b[state][action]
+                self.q_table_b[state][action] += self.alpha * td_error
+            return
+        
+        # Si terminé, mise à jour des deux tables
+        td_error_a = reward - self.q_table_a[state][action]
+        td_error_b = reward - self.q_table_b[state][action]
+        self.q_table_a[state][action] += self.alpha * td_error_a
+        self.q_table_b[state][action] += self.alpha * td_error_b
+    
+    def decay_epsilon(self, decay_rate=0.995):
+        self.epsilon = max(0.05, self.epsilon * decay_rate)
+
+
+# 5. SARSA Linéaire (Approximation de fonction)
+class LinearSARSAAgent:
     def __init__(self, env, alpha=0.005, gamma=0.99, epsilon=1.0):
         self.env = env
         self.alpha = alpha 
@@ -163,7 +301,6 @@ class LinearSARSAAgent:
         return abs(p1[0] - p2[0]) + abs(p1[1] - p2[1])
 
     def feature_extractor(self, state, action):
-        
         if action < 0 or action >= self.num_actions:
             return np.zeros(self.num_features)
 
@@ -190,7 +327,6 @@ class LinearSARSAAgent:
     def estimate_q(self, state, action):
         if state in self.env.goals:
             return 0.0
-
         phi_s_a = self.feature_extractor(state, action)
         return np.dot(self.theta, phi_s_a)
 
@@ -199,17 +335,14 @@ class LinearSARSAAgent:
             return self.env.action_space.sample()
         else:
             q_values = [self.estimate_q(state, action) for action in range(self.num_actions)]
-            
             max_q = np.max(q_values)
             best_actions = np.where(q_values == max_q)[0]
-            
             return random.choice(best_actions)
     
-    def learn(self, state, action, reward, next_state, next_action):
-        
+    def learn(self, state, action, reward, next_state, next_action, done):
         q_s_a = self.estimate_q(state, action)
         
-        if next_state in self.env.goals or next_action is None:
+        if done or next_action is None:
              q_s_prime_a_prime = 0.0
         else:
              q_s_prime_a_prime = self.estimate_q(next_state, next_action)
@@ -221,21 +354,111 @@ class LinearSARSAAgent:
         self.theta += self.alpha * td_error * phi_s_a
 
     def decay_epsilon(self, decay_rate=0.995): 
-        self.epsilon = max(0.05, self.epsilon * decay_rate) 
-
-    def save_weights(self, filename="sarsa_linear_weights.pkl"):
-        with open(filename, 'wb') as f:
-            pickle.dump(self.theta, f)
-        print(f"Poids theta sauvegardés dans {filename}")
+        self.epsilon = max(0.05, self.epsilon * decay_rate)
 
 
-# --- PARTIE III: FONCTIONS D'EXÉCUTION ET DE VISUALISATION ---
+# 6. Q-Learning Linéaire (Approximation de fonction)
+class LinearQLearningAgent:
+    def __init__(self, env, alpha=0.005, gamma=0.99, epsilon=1.0):
+        self.env = env
+        self.alpha = alpha 
+        self.gamma = gamma 
+        self.epsilon = epsilon 
+        
+        self.num_base_features = 5
+        self.num_actions = env.action_space.n 
+        self.num_features = self.num_base_features * self.num_actions
+        
+        self.theta = np.zeros(self.num_features) 
 
-def train_agent(env, agent, num_episodes=500):
-    print(f"\n--- Démarrage de l'entraînement SARSA Linéaire sur {num_episodes} épisodes ---")
+    def _manhattan_distance(self, p1, p2):
+        return abs(p1[0] - p2[0]) + abs(p1[1] - p2[1])
+
+    def feature_extractor(self, state, action):
+        if action < 0 or action >= self.num_actions:
+            return np.zeros(self.num_features)
+
+        r, c = state
+        
+        if self.env.goals:
+            dist_goal = min(self._manhattan_distance(state, g) for g in self.env.goals)
+        else:
+            dist_goal = self.env.grid_size * 2
+            
+        if self.env.obstacles:
+            dist_obs_min = min(self._manhattan_distance(state, o) for o in self.env.obstacles)
+        else:
+            dist_obs_min = self.env.grid_size * 2
+        
+        phi_base = np.array([r, c, dist_goal, dist_obs_min, 1.0])
+        
+        phi_s_a = np.zeros(self.num_features)
+        start_index = action * self.num_base_features
+        phi_s_a[start_index : start_index + self.num_base_features] = phi_base
+        
+        return phi_s_a
+
+    def estimate_q(self, state, action):
+        if state in self.env.goals:
+            return 0.0
+        phi_s_a = self.feature_extractor(state, action)
+        return np.dot(self.theta, phi_s_a)
+
+    def get_action(self, state):
+        if random.random() < self.epsilon:
+            return self.env.action_space.sample()
+        else:
+            q_values = [self.estimate_q(state, action) for action in range(self.num_actions)]
+            max_q = np.max(q_values)
+            best_actions = np.where(q_values == max_q)[0]
+            return random.choice(best_actions)
+    
+    def learn(self, state, action, reward, next_state, done):
+        q_s_a = self.estimate_q(state, action)
+        
+        if done:
+             q_max_next = 0.0
+        else:
+             q_max_next = max([self.estimate_q(next_state, a) for a in range(self.num_actions)])
+        
+        td_target = reward + self.gamma * q_max_next
+        td_error = td_target - q_s_a
+        
+        phi_s_a = self.feature_extractor(state, action)
+        self.theta += self.alpha * td_error * phi_s_a
+
+    def decay_epsilon(self, decay_rate=0.995): 
+        self.epsilon = max(0.05, self.epsilon * decay_rate)
+
+
+
+def train_qlearning(env, agent, num_episodes=500):
     reward_history = []
-    theta_history = []
-    log_interval = 20
+    
+    for episode in range(num_episodes):
+        state, _ = env.reset()
+        done = False
+        truncated = False
+        episode_reward = 0.0
+        
+        while not done and not truncated:
+            action = agent.get_action(state)
+            next_state, reward, done, truncated_step, _ = env.step(action)
+            truncated = truncated or truncated_step
+            
+            agent.learn(state, action, reward, next_state, done or truncated)
+            
+            state = next_state
+            episode_reward += reward
+        
+        agent.decay_epsilon()
+        reward_history.append(episode_reward)
+            
+    return reward_history
+
+
+def train_sarsa(env, agent, num_episodes=500):
+    reward_history = []
     
     for episode in range(num_episodes):
         state, _ = env.reset()
@@ -246,7 +469,6 @@ def train_agent(env, agent, num_episodes=500):
         action = agent.get_action(state)
         
         while not done and not truncated:
-            
             next_state, reward, done, truncated_step, _ = env.step(action)
             truncated = truncated or truncated_step
             
@@ -255,7 +477,7 @@ def train_agent(env, agent, num_episodes=500):
             else:
                 next_action = agent.get_action(next_state)
             
-            agent.learn(state, action, reward, next_state, next_action)
+            agent.learn(state, action, reward, next_state, next_action, done or truncated)
             
             state = next_state
             action = next_action
@@ -263,18 +485,131 @@ def train_agent(env, agent, num_episodes=500):
         
         agent.decay_epsilon()
         reward_history.append(episode_reward)
-        
-        if (episode + 1) % log_interval == 0 or episode == num_episodes - 1:
-            theta_history.append(agent.theta.copy())
-
-        if (episode + 1) % (num_episodes // 10 if num_episodes >= 10 else 1) == 0:
-            print(f"Épisode {episode + 1}/{num_episodes}. Récompense: {episode_reward:.1f}. Epsilon: {agent.epsilon:.4f}.")
             
-    print("--- Entraînement SARSA Linéaire Terminé ---")
-    return reward_history, theta_history
+    return reward_history
 
-def run_episode(env, agent, max_steps=50):
+
+def plot_comparison(results_dict, title="Comparaison des Algorithmes TD(0)", window=50):
+    """Compare les performances de plusieurs algorithmes"""
+    plt.figure(figsize=(14, 6))
     
+    colors = ['blue', 'red', 'green', 'orange', 'purple', 'brown']
+    
+    for idx, (algo_name, rewards) in enumerate(results_dict.items()):
+        color = colors[idx % len(colors)]
+        
+        # Courbe brute avec transparence
+        plt.plot(rewards, alpha=0.2, color=color)
+        
+        # Moyenne glissante
+        if len(rewards) >= window:
+            rolling_mean = np.convolve(rewards, np.ones(window)/window, mode='valid')
+            plt.plot(np.arange(window-1, len(rewards)), rolling_mean, 
+                    label=algo_name, color=color, linewidth=2)
+    
+    plt.title(title, fontsize=14, fontweight='bold')
+    plt.xlabel("Épisode", fontsize=12)
+    plt.ylabel("Récompense Totale", fontsize=12)
+    plt.grid(True, alpha=0.3)
+    plt.legend(loc='lower right', fontsize=10)
+    plt.tight_layout()
+
+
+def plot_convergence_speed(results_dict, threshold=-10):
+    """Analyse la vitesse de convergence"""
+    plt.figure(figsize=(10, 6))
+    
+    algo_names = []
+    episodes_to_converge = []
+    
+    for algo_name, rewards in results_dict.items():
+        # Trouver le premier épisode où la moyenne glissante dépasse le seuil
+        window = 50
+        if len(rewards) >= window:
+            rolling_mean = np.convolve(rewards, np.ones(window)/window, mode='valid')
+            converged = np.where(rolling_mean >= threshold)[0]
+            if len(converged) > 0:
+                episodes_to_converge.append(converged[0] + window)
+            else:
+                episodes_to_converge.append(len(rewards))
+        else:
+            episodes_to_converge.append(len(rewards))
+        
+        algo_names.append(algo_name)
+    
+    bars = plt.bar(algo_names, episodes_to_converge, color=['blue', 'red', 'green', 'orange', 'purple', 'brown'])
+    plt.title(f"Vitesse de Convergence (Seuil: {threshold})", fontsize=14, fontweight='bold')
+    plt.xlabel("Algorithme", fontsize=12)
+    plt.ylabel("Épisodes pour Converger", fontsize=12)
+    plt.xticks(rotation=45, ha='right')
+    plt.grid(True, axis='y', alpha=0.3)
+    
+    # Ajouter les valeurs sur les barres
+    for bar in bars:
+        height = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width()/2., height,
+                f'{int(height)}', ha='center', va='bottom', fontsize=10)
+    
+    plt.tight_layout()
+
+
+def plot_final_performance(results_dict, last_n=100):
+    """Compare les performances finales"""
+    plt.figure(figsize=(10, 6))
+    
+    algo_names = []
+    final_rewards = []
+    
+    for algo_name, rewards in results_dict.items():
+        algo_names.append(algo_name)
+        final_rewards.append(np.mean(rewards[-last_n:]))
+    
+    bars = plt.bar(algo_names, final_rewards, color=['blue', 'red', 'green', 'orange', 'purple', 'brown'])
+    plt.title(f"Performance Finale (Moyenne sur les {last_n} derniers épisodes)", 
+             fontsize=14, fontweight='bold')
+    plt.xlabel("Algorithme", fontsize=12)
+    plt.ylabel("Récompense Moyenne", fontsize=12)
+    plt.xticks(rotation=45, ha='right')
+    plt.grid(True, axis='y', alpha=0.3)
+    plt.axhline(y=0, color='black', linestyle='--', linewidth=1, alpha=0.5)
+    
+    # Ajouter les valeurs sur les barres
+    for bar in bars:
+        height = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width()/2., height,
+                f'{height:.1f}', ha='center', va='bottom' if height > 0 else 'top', fontsize=10)
+    
+    plt.tight_layout()
+
+
+def plot_variance_comparison(results_dict, window=50):
+    """Compare la variance des performances"""
+    plt.figure(figsize=(14, 6))
+    
+    colors = ['blue', 'red', 'green', 'orange', 'purple', 'brown']
+    
+    for idx, (algo_name, rewards) in enumerate(results_dict.items()):
+        color = colors[idx % len(colors)]
+        
+        if len(rewards) >= window:
+            # Calcul de la variance glissante
+            rolling_var = []
+            for i in range(window, len(rewards)):
+                rolling_var.append(np.var(rewards[i-window:i]))
+            
+            plt.plot(np.arange(window, len(rewards)), rolling_var, 
+                    label=algo_name, color=color, linewidth=2)
+    
+    plt.title("Stabilité des Algorithmes (Variance Glissante)", fontsize=14, fontweight='bold')
+    plt.xlabel("Épisode", fontsize=12)
+    plt.ylabel("Variance", fontsize=12)
+    plt.grid(True, alpha=0.3)
+    plt.legend(loc='upper right', fontsize=10)
+    plt.tight_layout()
+
+
+def run_episode_visual(env, agent, max_steps=50, is_sarsa=False):
+    """Exécute un épisode avec visualisation"""
     observation, info = env.reset()
     env.total_reward = 0 
     
@@ -284,6 +619,9 @@ def run_episode(env, agent, max_steps=50):
     
     env.render() 
     action_names = {0: "UP", 1: "DOWN", 2: "LEFT", 3: "RIGHT"}
+    
+    if is_sarsa:
+        action = agent.get_action(observation)
 
     while not done and not truncated:
         step_count += 1
@@ -293,114 +631,124 @@ def run_episode(env, agent, max_steps=50):
         
         old_epsilon = agent.epsilon
         agent.epsilon = 0.0
-        action = agent.get_action(observation)
+        
+        if not is_sarsa:
+            action = agent.get_action(observation)
+        
         agent.epsilon = old_epsilon 
 
-        observation, reward, done, truncated_step, info = env.step(action) 
+        next_observation, reward, done, truncated_step, info = env.step(action) 
         truncated = truncated or truncated_step
 
-        print(f"Pas {step_count}: Action: {action_names[action]}, Pos: {observation}, Reward: {reward:.1f}")
+        print(f"Pas {step_count}: Action: {action_names[action]}, Pos: {next_observation}, Reward: {reward:.1f}")
         
-        env.render() 
-
-    print("\n================================")
-    print(f"Épisode Terminé en {step_count} pas.")
-    print(f"Récompense Totale: {env.total_reward:.1f}")
-    print("================================\n")
-    env.close() 
-
-def plot_convergence(reward_history, title="Courbe de Convergence SARSA Linéaire"):
-    plt.figure(figsize=(10, 5))
-    plt.plot(reward_history, label='Récompense Totale par Épisode', color='blue', alpha=0.5)
-    
-    window = max(1, len(reward_history) // 10) 
-    rolling_mean = np.convolve(reward_history, np.ones(window)/window, mode='valid')
-    plt.plot(np.arange(window-1, len(reward_history)), rolling_mean, label=f'Moyenne Glissante (Fenêtre: {window})', color='orange', linewidth=2)
-    
-    plt.title(title)
-    plt.xlabel("Épisode")
-    plt.ylabel("Récompense Totale Cumulée")
-    plt.grid(True)
-    plt.legend()
-
-def plot_sensitivity(theta_history, log_interval, num_features, title="Sensibilité des Poids Theta (Convergence des Paramètres)"):
-    if not theta_history:
-        print("L'historique des poids theta est vide. Impossible de tracer la sensibilité.")
-        return
+        env.render()
         
-    theta_matrix = np.array(theta_history)
-    episodes = np.arange(log_interval, len(theta_history) * log_interval + log_interval, log_interval)
-    
-    # Ajuster la taille des épisodes si le dernier point a été ajouté
-    if len(episodes) > len(theta_matrix):
-        episodes = episodes[:len(theta_matrix)]
-    elif len(episodes) < len(theta_matrix):
-        episodes = np.append(episodes, episodes[-1] + log_interval) 
-        episodes[-1] = (len(theta_matrix)-1) * log_interval + 1 
-    episodes[-1] = max(episodes) # S'assurer que le dernier point est bien le dernier épisode
+        if is_sarsa and not done and not truncated:
+            agent.epsilon = 0.0
+            action = agent.get_action(next_observation)
+            agent.epsilon = old_epsilon
+        
+        observation = next_observation
 
-    plt.figure(figsize=(10, 5))
-    
-    for i in range(num_features):
-        plt.plot(episodes, theta_matrix[:, i], alpha=0.7, 
-                 label=f'$\\theta_{i}$')
-    
-    plt.title(title)
-    plt.xlabel(f"Épisode (Log: {log_interval} ép.)")
-    plt.ylabel("Valeur du Poids $\\theta_i$")
-    plt.grid(True)
-    plt.legend(ncol=5, loc='upper center', bbox_to_anchor=(0.5, -0.15), fontsize='small')
-    plt.tight_layout(rect=[0, 0.15, 1, 1])
+    print(f"\nÉpisode Terminé en {step_count} pas. Récompense: {env.total_reward:.1f}\n")
+    env.close()
 
 
-# --- PARTIE IV: EXÉCUTION PRINCIPALE (CORRIGÉE) ---
 
 if __name__ == "__main__":
-    
-    # 1. Utiliser plt.ion() pour l'affichage du rendu de l'environnement pendant l'entraînement/test
-    plt.ion() 
     
     GRID_SIZE = 7
     FIXED_GOALS = [(6, 6)]
     FIXED_OBSTACLES = [(2, 2), (2, 3), (4, 4), (4, 5)]
-    NUM_TRAIN_EPISODES = 10000
-    LOG_INTERVAL = 20
-
-    print("\n--- DÉBUT DE L'ENTRAÎNEMENT SARSA LINÉAIRE ---")
+    NUM_EPISODES = 5000
+    ACTION_NOISE = 0.1
     
-    env_sarsa_train = StochasticGymnasiumGridWorld(
-        grid_size=GRID_SIZE, 
-        goals=FIXED_GOALS, 
-        obstacles=FIXED_OBSTACLES, 
-        render_mode=None,
-        action_noise=0.1
-    )
+    print("\n" + "="*60)
+    print("COMPARAISON DES ALGORITHMES TD(0)")
+    print("="*60 + "\n")
     
-    agent_sarsa = LinearSARSAAgent(env_sarsa_train, alpha=0.005, gamma=0.99, epsilon=1.0) 
+    results = {}
     
-    reward_history, theta_history = train_agent(env_sarsa_train, agent_sarsa, num_episodes=NUM_TRAIN_EPISODES)
-    env_sarsa_train.close()
+    # 1. Q-Learning Tabulaire
+    print("Entraînement: Q-Learning (Tabulaire)...")
+    env1 = StochasticGymnasiumGridWorld(GRID_SIZE, FIXED_GOALS, FIXED_OBSTACLES, None, ACTION_NOISE)
+    agent1 = QLearningAgent(env1, alpha=0.1, gamma=0.99, epsilon=1.0)
+    results['Q-Learning'] = train_qlearning(env1, agent1, NUM_EPISODES)
+    env1.close()
     
-    agent_sarsa.save_weights()
+    # 2. SARSA Tabulaire
+    print("Entraînement: SARSA (Tabulaire)...")
+    env2 = StochasticGymnasiumGridWorld(GRID_SIZE, FIXED_GOALS, FIXED_OBSTACLES, None, ACTION_NOISE)
+    agent2 = SARSAAgent(env2, alpha=0.1, gamma=0.99, epsilon=1.0)
+    results['SARSA'] = train_sarsa(env2, agent2, NUM_EPISODES)
+    env2.close()
     
-    # 1. Tracé de la courbe de convergence (Récompenses)
-    plot_convergence(reward_history, title="1. Courbe de Convergence (Récompense Totale par Épisode)")
+    # 3. Expected SARSA
+    print("Entraînement: Expected SARSA...")
+    env3 = StochasticGymnasiumGridWorld(GRID_SIZE, FIXED_GOALS, FIXED_OBSTACLES, None, ACTION_NOISE)
+    agent3 = ExpectedSARSAAgent(env3, alpha=0.1, gamma=0.99, epsilon=1.0)
+    results['Expected SARSA'] = train_qlearning(env3, agent3, NUM_EPISODES)
+    env3.close()
     
-    # 2. Tracé de la courbe de sensibilité (Poids Theta)
-    plot_sensitivity(theta_history, LOG_INTERVAL, agent_sarsa.num_features, 
-                     title="2. Courbe de Sensibilité (Évolution des Poids $\\theta$)")
+    # 4. Double Q-Learning
+    print("Entraînement: Double Q-Learning...")
+    env4 = StochasticGymnasiumGridWorld(GRID_SIZE, FIXED_GOALS, FIXED_OBSTACLES, None, ACTION_NOISE)
+    agent4 = DoubleQLearningAgent(env4, alpha=0.1, gamma=0.99, epsilon=1.0)
+    results['Double Q-Learning'] = train_qlearning(env4, agent4, NUM_EPISODES)
+    env4.close()
     
-    print("\n--- TEST: Agent SARSA Linéaire (Exploitation) avec Rendu ---")
-    env_run_sarsa = StochasticGymnasiumGridWorld(
-        grid_size=GRID_SIZE, 
-        goals=FIXED_GOALS, 
-        obstacles=FIXED_OBSTACLES, 
-        render_mode="human",
-        action_noise=0.0
-    )
+    # 5. SARSA Linéaire
+    print("Entraînement: SARSA Linéaire...")
+    env5 = StochasticGymnasiumGridWorld(GRID_SIZE, FIXED_GOALS, FIXED_OBSTACLES, None, ACTION_NOISE)
+    agent5 = LinearSARSAAgent(env5, alpha=0.005, gamma=0.99, epsilon=1.0)
+    results['SARSA Linéaire'] = train_sarsa(env5, agent5, NUM_EPISODES)
+    env5.close()
     
-    run_episode(env_run_sarsa, agent_sarsa, max_steps=40)
-    plt.ioff() # Désactiver le mode interactif
-    plt.show(block=True) # Afficher et bloquer le script
+    # 6. Q-Learning Linéaire
+    print("Entraînement: Q-Learning Linéaire...")
+    env6 = StochasticGymnasiumGridWorld(GRID_SIZE, FIXED_GOALS, FIXED_OBSTACLES, None, ACTION_NOISE)
+    agent6 = LinearQLearningAgent(env6, alpha=0.005, gamma=0.99, epsilon=1.0)
+    results['Q-Learning Linéaire'] = train_qlearning(env6, agent6, NUM_EPISODES)
+    env6.close()
     
-    print("\n--- FIN DU PROGRAMME ---")
+    print("\n" + "="*60)
+    print("ENTRAÎNEMENT TERMINÉ - GÉNÉRATION DES GRAPHIQUES")
+    print("="*60 + "\n")
+    
+    # Génération de toutes les visualisations
+    plot_comparison(results, "1. Comparaison Globale des Algorithmes TD(0)")
+    plot_convergence_speed(results, threshold=0)
+    plot_final_performance(results, last_n=100)
+    plot_variance_comparison(results, window=50)
+    
+    # Tableau récapitulatif
+    print("\n" + "="*60)
+    print("TABLEAU RÉCAPITULATIF DES PERFORMANCES")
+    print("="*60)
+    print(f"{'Algorithme':<25} {'Récomp. Finale':<18} {'Récomp. Max':<15}")
+    print("-"*60)
+    
+    for algo_name, rewards in results.items():
+        final_avg = np.mean(rewards[-100:])
+        max_reward = np.max(rewards)
+        print(f"{algo_name:<25} {final_avg:<18.2f} {max_reward:<15.2f}")
+    
+    print("="*60 + "\n")
+    
+    # Test visuel avec le meilleur agent
+    print("Sélection du meilleur agent pour démonstration...")
+    best_algo = max(results.items(), key=lambda x: np.mean(x[1][-100:]))
+    print(f"Meilleur algorithme: {best_algo[0]}\n")
+    
+    # Choisir l'agent correspondant pour le test
+    print("Démonstration visuelle avec Q-Learning (Tabulaire)...")
+    env_demo = StochasticGymnasiumGridWorld(GRID_SIZE, FIXED_GOALS, FIXED_OBSTACLES, "human", 0.0)
+    run_episode_visual(env_demo, agent1, max_steps=50, is_sarsa=False)
+    
+    plt.show(block=True)
+    
+    print("\n" + "="*60)
+    print("ANALYSE TERMINÉE")
+    print("="*60 + "\n")
+    

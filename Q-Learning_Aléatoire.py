@@ -8,9 +8,6 @@ import pickle
 import time
 import os
 
-# ====================================================================
-# I. Environnement (Goal Aléatoire AVEC État 4D: (r_a, c_a, r_g, c_g))
-# ====================================================================
 
 class GymnasiumGridWorld(gym.Env): 
     
@@ -20,7 +17,6 @@ class GymnasiumGridWorld(gym.Env):
         super().__init__()
         
         self.grid_size = grid_size
-        # Les obstacles doivent être ajustés pour rester dans les grilles de taille variable
         self.obstacles = set(o for o in obstacles if o[0] < grid_size and o[1] < grid_size)
         self.start_pos = (0, 0)
         
@@ -29,7 +25,6 @@ class GymnasiumGridWorld(gym.Env):
                                      if s not in self.obstacles and s != self.start_pos]
         
         if not self.valid_goal_locations:
-             # Gérer le cas où la grille est trop petite ou l'obstacle recouvre le goal
              if grid_size > 1:
                 self.valid_goal_locations = [(grid_size - 1, grid_size - 1)] 
              else:
@@ -39,8 +34,6 @@ class GymnasiumGridWorld(gym.Env):
         self.goals = set() 
         
         self.action_space = spaces.Discrete(4) 
-        
-        # L'espace d'observation DOIT refléter la nouvelle taille de grille
         self.observation_space = spaces.Tuple((
             spaces.Discrete(self.grid_size),
             spaces.Discrete(self.grid_size),
@@ -168,11 +161,7 @@ class GymnasiumGridWorld(gym.Env):
     def close(self):
         if hasattr(self, 'fig') and self.fig:
              plt.close(self.fig)
-
-# ====================================================================
-# II. Agent Q-Learning (Adapté à l'État 4D)
-# ====================================================================
-
+             
 class QLearningAgent:
     def __init__(self, env, alpha=0.1, gamma=0.9, epsilon=1.0):
         self.env = env
@@ -181,10 +170,7 @@ class QLearningAgent:
         self.epsilon = epsilon 
         
         s = env.grid_size
-        # Utiliser un dictionnaire pour stocker Q-table pour supporter différentes tailles de grille
         self.Q = {}
-
-    # La méthode get_action et learn doivent gérer l'accès à Q via des clés de tuple
     def _get_q(self, state, action):
         """Accède à la Q-value, initialise à 0 si elle n'existe pas (nécessaire avec dict)."""
         key = state + (action,)
@@ -223,17 +209,12 @@ class QLearningAgent:
     def decay_epsilon(self, decay_rate=0.99995):
         self.epsilon = max(0.01, self.epsilon * decay_rate) 
 
-# ====================================================================
-# III. Fonctions d'Entraînement et d'Analyse (MODIFIÉES)
-# ====================================================================
-
 def train_agent(env, agent, num_episodes=10000):
     print(f"\n--- Entraînement Q-Learning sur {num_episodes} épisodes (Grille {env.grid_size}x{env.grid_size}) ---")
     reward_history = []
     q_value_history = []
     log_interval = 100
     
-    # État fixe à suivre (Agent en (0,0), Goal en (max, max))
     r_g_fixed, c_g_fixed = env.grid_size - 1, env.grid_size - 1
     state_to_track = (0, 0, r_g_fixed, c_g_fixed)
     action_to_track = 1 # Action: DOWN
@@ -307,7 +288,6 @@ def plot_q_sensitivity(q_value_history, log_interval, state_to_track_str, action
     plt.grid(True)
     plt.show(block=False)
 
-# --- Sensibilité aux grilles ---
 def analyze_grid_sensitivity(grid_sizes, num_episodes, obstacles):
     """Effectue l'entraînement pour plusieurs tailles de grille et analyse les résultats."""
     
@@ -316,14 +296,10 @@ def analyze_grid_sensitivity(grid_sizes, num_episodes, obstacles):
     print("\n" + "="*50)
     print("ANALYSE DE LA SENSIBILITÉ PAR RAPPORT À LA TAILLE DE LA GRILLE")
     print("="*50)
-
-    # Nous allons nous baser sur les 10% dernières récompenses
     window = max(1, num_episodes // 10) 
     
     for size in grid_sizes:
         print(f"\n***** Démarrage pour Grille {size}x{size} *****")
-        
-        # Créer un nouvel environnement et un nouvel agent pour chaque taille
         env = GymnasiumGridWorld(grid_size=size, obstacles=obstacles, render_mode=None)
         agent = QLearningAgent(env, alpha=0.1, gamma=0.9, epsilon=1.0)
         
@@ -331,7 +307,6 @@ def analyze_grid_sensitivity(grid_sizes, num_episodes, obstacles):
         reward_history, _, _ = train_agent(env, agent, num_episodes=num_episodes)
         env.close()
         
-        # Calcul de la moyenne des récompenses sur la dernière fenêtre
         if len(reward_history) >= window:
             mean_reward = np.mean(reward_history[-window:])
         else:
@@ -373,9 +348,6 @@ def run_episode(env, agent, max_steps=100, save_gif=False, gif_path=None):
         
         if step_count >= max_steps:
              truncated = True
-        
-        # Exploitation pure (epsilon=0.0)
-        # Nécessite de calculer le max Q à la volée, car nous utilisons un dict pour Q
         q_values = [agent._get_q(observation, a) for a in range(env.action_space.n)]
         action = np.argmax(q_values)
         
@@ -391,38 +363,25 @@ def run_episode(env, agent, max_steps=100, save_gif=False, gif_path=None):
     
     env.close()
 
-# ====================================================================
-# IV. Exécution Principale (MODIFIÉE)
-# ====================================================================
-
 if __name__ == "__main__":
     
     plt.ion()
-    
-    # --- Configuration Commune ---
     FIXED_OBSTACLES = [(2, 2), (4, 4), (5, 1)]
-    NUM_TRAIN_EPISODES = 3000 # Réduit pour la démo multi-grilles
+    NUM_TRAIN_EPISODES = 3000 
     
-    # --- Sensibilité aux Grilles ---
-    # Définir les tailles de grille à tester
     GRID_SIZES_TO_TEST = [4, 6, 8, 10]
     
-    # Exécuter l'analyse de sensibilité
     grid_sizes_results, final_reward_means_results = analyze_grid_sensitivity(
         GRID_SIZES_TO_TEST, 
         NUM_TRAIN_EPISODES, 
         FIXED_OBSTACLES
     )
 
-    # Afficher la courbe de sensibilité aux grilles
     plot_grid_sensitivity(
         grid_sizes_results, 
         final_reward_means_results,
         title="3. Sensibilité à la Taille de la Grille (Récompense Moyenne Finale)"
     )
-    
-    # --- Convergence et Sensibilité aux Épisodes (pour la dernière grille testée) ---
-    # Ré-entraîner et tester le plus grand modèle pour la visualisation détaillée
     
     GRID_SIZE_FINAL = GRID_SIZES_TO_TEST[-1]
     
@@ -454,7 +413,6 @@ if __name__ == "__main__":
         title=f"2. Sensibilité aux Épisodes (Convergence Q-Value, Grille {GRID_SIZE_FINAL}x{GRID_SIZE_FINAL})"
     )
     
-    # Test de l'Agent Entraîné (Exploitation)
     print("\n--- TEST FINAL: Agent Q-Learning (Exploitation) avec Rendu ---")
     env_run_q = GymnasiumGridWorld(grid_size=GRID_SIZE_FINAL, obstacles=FIXED_OBSTACLES, render_mode="human")
     agent_final.epsilon = 0.0 # Exploitation pure

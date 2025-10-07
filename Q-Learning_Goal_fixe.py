@@ -14,9 +14,9 @@ class GymnasiumGridWorld(gym.Env):
         self.grid_size = grid_size
         self.goals = set(goals) 
         self.obstacles = set(obstacles) 
-        self.start_pos = (0, 0) # Position de départ fixe
+        self.start_pos = (0, 0) 
         
-        # Vérification des paramètres
+        
         if not all(0 <= r < grid_size and 0 <= c < grid_size for r, c in self.goals):
              raise ValueError("Les coordonnées des goals doivent être dans la grille.")
         if not all(0 <= r < grid_size and 0 <= c < grid_size for r, c in self.obstacles):
@@ -24,10 +24,9 @@ class GymnasiumGridWorld(gym.Env):
         if self.start_pos in self.goals or self.start_pos in self.obstacles:
              raise ValueError("La position de départ ne doit être ni un goal ni un obstacle.")
         
-        # 4 actions: UP, DOWN, LEFT, RIGHT
         self.action_space = spaces.Discrete(4) 
         
-        # Espace d'observation: (row, col)
+    
         self.observation_space = spaces.Tuple((
             spaces.Discrete(self.grid_size),
             spaces.Discrete(self.grid_size)
@@ -36,7 +35,6 @@ class GymnasiumGridWorld(gym.Env):
         self.render_mode = render_mode
         self.total_reward = 0.0 
         
-        # Initialisation du Rendu Matplotlib
         if self.render_mode == "human":
             plt.ion() 
             self.fig, self.ax = plt.subplots(figsize=(5, 5))
@@ -45,16 +43,12 @@ class GymnasiumGridWorld(gym.Env):
     def _setup_render(self):
         """Configure les éléments statiques de la grille pour le rendu."""
         
-        # 0: Chemin (Blanc), 1: Goal (Rouge), 2: Obstacle (Noir)
         self.grid_matrix = np.zeros((self.grid_size, self.grid_size))
         
-        # Set goals to value 1 and obstacles to value 2 for coloring
         for r, c in self.goals:
             self.grid_matrix[r, c] = 1 
         for r, c in self.obstacles:
             self.grid_matrix[r, c] = 2 
-            
-        # Définition des couleurs: Blanc (Chemin), Rouge (Goal), Noir (Obstacle)
         colors = ['white', 'red', 'black'] 
         self.cmap = mcolors.ListedColormap(colors)
         bounds = [-0.5, 0.5, 1.5, 2.5]
@@ -62,7 +56,6 @@ class GymnasiumGridWorld(gym.Env):
         
         self.im = self.ax.imshow(self.grid_matrix, cmap=self.cmap, norm=self.norm)
         
-        # Mise en place de la grille visuelle
         self.ax.set_xticks(np.arange(self.grid_size + 1) - 0.5, minor=False)
         self.ax.set_yticks(np.arange(self.grid_size + 1) - 0.5, minor=False)
         self.ax.tick_params(axis='both', which='both', length=0)
@@ -70,13 +63,11 @@ class GymnasiumGridWorld(gym.Env):
         self.ax.set_yticklabels([])
         self.ax.grid(which='major', color='gray', linestyle='-', linewidth=1.5)
         
-        # Ajout des étiquettes (Goal et Obstacle)
         for r, c in self.goals:
             self.ax.text(c, r, 'GOAL', ha='center', va='center', color='white' if r>0 or c>0 else 'black', fontsize=10, fontweight='bold')
         for r, c in self.obstacles:
             self.ax.text(c, r, 'OBS', ha='center', va='center', color='white', fontsize=10, fontweight='bold')
             
-        # Agent marker (en vert)
         self.agent_marker, = self.ax.plot([], [], marker='o', markersize=20, 
                                           color='green', linestyle='', label='Agent')
 
@@ -92,7 +83,6 @@ class GymnasiumGridWorld(gym.Env):
         observation = self.state
         info = {} 
         
-        # print(f"--- Épisode Réinitialisé. Position initiale: {self.state} ---")
         return observation, info
 
     def get_transition_prob(self, state, action):
@@ -103,27 +93,21 @@ class GymnasiumGridWorld(gym.Env):
         row, col = state
         new_row, new_col = row, col 
         
-        # Tenter le mouvement
         if action == 0: new_row = max(0, row - 1) # UP
         elif action == 1: new_row = min(self.grid_size - 1, row + 1) # DOWN
         elif action == 2: new_col = max(0, col - 1) # LEFT
         elif action == 3: new_col = min(self.grid_size - 1, col + 1) # RIGHT
         
         next_state_candidate = (new_row, new_col)
-        
-        # 1. Gestion de l'obstacle
         if next_state_candidate in self.obstacles:
-            next_state = state  # Ne bouge pas
-            reward = -5         # Pénalité pour tentative d'entrer dans un obstacle
+            next_state = state 
+            reward = -5         
             is_terminated = False
-        
-        # 2. Gestion du mouvement réussi
         else:
             next_state = next_state_candidate
             reward = -1 
             is_terminated = False
 
-            # 3. Gestion du Goal
             if next_state in self.goals:
                 reward = 10
                 is_terminated = True
@@ -135,32 +119,22 @@ class GymnasiumGridWorld(gym.Env):
         """Exécute l'action et retourne les 5 éléments requis par l'API Gymnasium."""
         if self.terminated or self.truncated:
             return self.state, 0, self.terminated, self.truncated, {}
-
-        # Utilisez le modèle de transition
         new_state, reward, terminated = self.get_transition_prob(self.state, action)
         
         self.state = new_state
         self.terminated = terminated
-        
-        # Truncation par défaut à False dans cet exemple, pourrait être basé sur max_steps
         return self.state, reward, self.terminated, self.truncated, {}
     
     def render(self):
         if self.render_mode == "human":
-            
-            # Met à jour la position de l'agent (en vert)
             self.agent_marker.set_data([self.state[1]], [self.state[0]]) 
-            
-            # Met à jour le titre
             self.ax.set_title(f"Pos: {self.state} | R: {self.total_reward:.1f} | Term: {self.terminated}", fontsize=10)
-            
-            # Dessin et pause
             self.fig.canvas.draw()
             self.fig.canvas.flush_events()
             plt.pause(1/self.metadata["render_fps"])
             
         elif self.render_mode is not None:
-            pass # No-op pour d'autres modes de rendu futurs
+            pass 
 
     def close(self):
         """Ferme toutes les ressources de rendu."""
@@ -176,7 +150,6 @@ class QLearningAgent:
         self.alpha = alpha 
         self.gamma = gamma 
         self.epsilon = epsilon 
-        # Initialisation de la table Q: (rows, cols, actions)
         self.Q = np.zeros((env.grid_size, env.grid_size, env.action_space.n))
 
     def get_action(self, state):
@@ -193,7 +166,6 @@ class QLearningAgent:
         r_prime, c_prime = next_state
         
         # Q-Learning Update Rule
-        # Q(s, a) <- Q(s, a) + alpha * [reward + gamma * max_a' Q(s', a') - Q(s, a)]
         max_q_next = np.max(self.Q[r_prime, c_prime, :])
         td_target = reward + self.gamma * max_q_next
         td_error = td_target - self.Q[r, c, action]
@@ -219,8 +191,6 @@ class QLearningAgent:
         except FileNotFoundError:
             print(f"Fichier {filename} non trouvé. La table Q reste à zéro.")
 
-
-# --- Fonctions d'Entraînement et d'Exécution ---
 
 def train_agent(env, agent, num_episodes=50):
     print(f"\n--- Démarrage de l'entraînement Q-Learning sur {num_episodes} épisodes ---")
@@ -267,7 +237,6 @@ def run_episode(env, agent, max_steps=50):
         if step_count >= max_steps:
               truncated = True
         
-        # En exploitation pure, l'agent utilise toujours la politique greedy
         action = np.argmax(agent.Q[observation[0], observation[1], :]) if isinstance(agent, QLearningAgent) else agent.get_action(observation)
         
         observation, reward, done, truncated_step, info = env.step(action) 
@@ -285,15 +254,13 @@ def run_episode(env, agent, max_steps=50):
     print("================================\n")
     env.close() 
 
-# --- Analyse et Visualisation ---
 
 def plot_convergence(reward_history, title="Courbe de Convergence Q-Learning"):
     """Trace l'historique des récompenses cumulées."""
     plt.figure(figsize=(10, 5))
     plt.plot(reward_history, label='Récompense Totale par Épisode', color='blue')
     
-    # Calculer et tracer la moyenne glissante (pour lisser la courbe)
-    window = max(1, len(reward_history) // 10) # 10% de la taille de l'historique
+    window = max(1, len(reward_history) // 10) 
     rolling_mean = np.convolve(reward_history, np.ones(window)/window, mode='valid')
     plt.plot(np.arange(window-1, len(reward_history)), rolling_mean, label=f'Moyenne Glissante (Fenêtre: {window})', color='orange', linewidth=2)
     
@@ -310,8 +277,6 @@ def run_sensitivity_analysis(grid_sizes, num_episodes=50, num_runs=5):
     for size in grid_sizes:
         print(f"\n--- Test de la taille de grille {size}x{size} ---")
         size_rewards = []
-        
-        # Goals/Obstacles adaptés à la taille (exemple: Goal au coin, Obstacle au centre)
         goals = [(size - 1, size - 1)] 
         obstacles = [(size // 2, size // 2)]
         
@@ -324,19 +289,18 @@ def run_sensitivity_analysis(grid_sizes, num_episodes=50, num_runs=5):
             env.close()
             
         all_rewards[size] = size_rewards
-
-    # Affichage des résultats de l'analyse
+        
     plt.figure(figsize=(12, 6))
     
     for size, rewards_list in all_rewards.items():
-        # Calculez la récompense moyenne et l'écart-type sur les 'num_runs'
+        
         mean_rewards = np.mean(rewards_list, axis=0)
         std_rewards = np.std(rewards_list, axis=0)
         
-        # Tracez la moyenne
+       
         plt.plot(mean_rewards, label=f'Grille {size}x{size} (Moyenne)')
         
-        # Tracez la zone de variance (écart-type)
+        
         plt.fill_between(range(num_episodes), 
                          mean_rewards - std_rewards, 
                          mean_rewards + std_rewards, 
@@ -349,42 +313,37 @@ def run_sensitivity_analysis(grid_sizes, num_episodes=50, num_runs=5):
     plt.grid(True)
     plt.show()
 
-# --- Exécution Principale ---
 
 if __name__ == "__main__":
-    plt.ion() # Mode interactif pour Matplotlib
+    plt.ion() 
     
-    # --- Configuration de la Grille (Fixe pour le Training) ---
+    
     GRID_SIZE = 10
     FIXED_GOALS = [(6, 6),(3,3)]
     FIXED_OBSTACLES = [(2, 2), (4, 4), (5, 1)]
     NUM_TRAIN_EPISODES = 20000
     
-    # 1. Entraînement Q-Learning sur la configuration fixe
+    
     print("\n--- DÉBUT DE L'ENTRAÎNEMENT Q-LEARNING ---")
     env_q_train = GymnasiumGridWorld(grid_size=GRID_SIZE, goals=FIXED_GOALS, 
                                      obstacles=FIXED_OBSTACLES, render_mode=None)
     agent_q = QLearningAgent(env_q_train, alpha=0.1, gamma=0.9, epsilon=1.0)
     
-    # Exécution de l'entraînement et récupération de l'historique
+    
     reward_history = train_agent(env_q_train, agent_q, num_episodes=NUM_TRAIN_EPISODES)
     env_q_train.close()
     
-    # Sauvegarde de la table Q après l'entraînement
     agent_q.save_q_table(filename="q_table_fixed_7x7.pkl")
     
-    # 2. Visualisation de la Courbe de Convergence
     plot_convergence(reward_history, title=f"Convergence Q-Learning ({GRID_SIZE}x{GRID_SIZE}, {NUM_TRAIN_EPISODES} Épisodes)")
     
-    # 3. Test de l'Agent Entraîné (Exploitation)
     print("\n--- TEST: Agent Q-Learning (Exploitation) avec Rendu ---")
     env_run_q = GymnasiumGridWorld(grid_size=GRID_SIZE, goals=FIXED_GOALS, 
                                      obstacles=FIXED_OBSTACLES, render_mode="human")
-    agent_q.epsilon = 0.0 # Désactiver l'exploration pour le test
+    agent_q.epsilon = 0.0 
     run_episode(env_run_q, agent_q, max_steps=2000000)
     
-    # 4. Analyse de Sensibilité (Comparaison de tailles de grille)
-    plt.ioff() # Désactive le mode interactif pour l'analyse
+    plt.ioff() 
     run_sensitivity_analysis(grid_sizes=[5, 7, 10], num_episodes=100000000, num_runs=5)
     plt.ion() 
     print("\n--- FIN DU PROGRAMME ---")
